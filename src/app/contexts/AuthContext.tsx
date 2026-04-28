@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { authAPI, User } from '../utils/api';
 
 interface AuthContextType {
@@ -8,6 +8,7 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string) => Promise<void>;
   logout: () => void;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,13 +27,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [anonId, setAnonId] = useState<string>('');
 
   useEffect(() => {
-    // Load saved session
     const savedUser = localStorage.getItem('user');
     if (savedUser) {
       setUser(JSON.parse(savedUser));
     }
-
-    // Load or generate anon ID
     let savedAnonId = localStorage.getItem('anonId');
     if (!savedAnonId) {
       savedAnonId = generateAnonId();
@@ -40,6 +38,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setAnonId(savedAnonId);
   }, []);
+
+  const refreshProfile = useCallback(async () => {
+    if (!user?.username) return;
+    try {
+      const res = await authAPI.getProfile(user.username);
+      if (res.user) {
+        const updated = { ...user, ...res.user };
+        setUser(updated);
+        localStorage.setItem('user', JSON.stringify(updated));
+      }
+    } catch (err) {
+      console.error('Failed to refresh profile', err);
+    }
+  }, [user]);
 
   const login = async (username: string, password: string) => {
     const response = await authAPI.login(username, password);
@@ -64,14 +76,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setUser(null);
     localStorage.removeItem('user');
-    // Generate new anon ID on logout
     const newAnonId = generateAnonId();
     setAnonId(newAnonId);
     localStorage.setItem('anonId', newAnonId);
   };
 
   return (
-    <AuthContext.Provider value={{ user, anonId, isAuthenticated: !!user, login, register, logout }}>
+    <AuthContext.Provider value={{ user, anonId, isAuthenticated: !!user, login, register, logout, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

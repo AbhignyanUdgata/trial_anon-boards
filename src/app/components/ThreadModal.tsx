@@ -11,9 +11,10 @@ interface ThreadModalProps {
   postId: string | null;
   isOpen: boolean;
   onClose: () => void;
+  onReplyCreated?: () => void;
 }
 
-export function ThreadModal({ postId, isOpen, onClose }: ThreadModalProps) {
+export function ThreadModal({ postId, isOpen, onClose, onReplyCreated }: ThreadModalProps) {
   const { user, anonId } = useAuth();
   const [post, setPost] = useState<Post | null>(null);
   const [replies, setReplies] = useState<Reply[]>([]);
@@ -59,6 +60,7 @@ export function ThreadModal({ postId, isOpen, onClose }: ThreadModalProps) {
       setReplyText('');
       setReplyingTo(null);
       await loadThread();
+      onReplyCreated?.();
     } catch (error) {
       console.error('Failed to post reply:', error);
     } finally {

@@ -102,15 +102,16 @@ export const postsAPI = {
       body: JSON.stringify(data),
     }),
 
-  likePost: (id: string) =>
+  likePost: (id: string, voterId: string) =>
     apiCall(`/posts/${id}/like`, {
       method: 'POST',
+      body: JSON.stringify({ voterId }),
     }),
 
-  deletePost: (id: string, username: string) =>
+  deletePost: (id: string, usernameOrAnonId: string, isAnon = false) =>
     apiCall(`/posts/${id}`, {
       method: 'DELETE',
-      body: JSON.stringify({ username }),
+      body: JSON.stringify(isAnon ? { anonId: usernameOrAnonId } : { username: usernameOrAnonId }),
     }),
 };
 
@@ -140,5 +141,38 @@ export const boardsAPI = {
   initBoards: () =>
     apiCall('/boards/init', {
       method: 'POST',
+    }),
+};
+
+// Reports API
+export const reportsAPI = {
+  reportPost: (postId: string, data: { reason: string; username?: string; anonId?: string }) =>
+    apiCall(`/posts/${postId}/report`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+};
+
+// Moderation API
+export const moderationAPI = {
+  getReports: (username: string, status = 'pending') =>
+    apiCall(`/moderation/reports?username=${username}&status=${status}`),
+
+  removePost: (postId: string, username: string) =>
+    apiCall(`/moderation/posts/${postId}/remove`, {
+      method: 'POST',
+      body: JSON.stringify({ username }),
+    }),
+
+  dismissReports: (postId: string, username: string) =>
+    apiCall(`/moderation/posts/${postId}/dismiss`, {
+      method: 'POST',
+      body: JSON.stringify({ username }),
+    }),
+
+  deletePost: (postId: string, username: string) =>
+    apiCall(`/moderation/posts/${postId}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ username }),
     }),
 };

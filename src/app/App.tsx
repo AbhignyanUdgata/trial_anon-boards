@@ -1,4 +1,4 @@
-import { Shield, LogIn, LogOut, User, Menu } from 'lucide-react';
+import { Shield, LogIn, LogOut, User, Menu, ShieldAlert } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -7,12 +7,13 @@ import { CreatePostDialog } from './components/CreatePostDialog';
 import { Sidebar } from './components/Sidebar';
 import { BoardCard } from './components/BoardCard';
 import { ThreadModal } from './components/ThreadModal';
+import { ModeratorPanel } from './components/ModeratorPanel';
 import { Post, Board, postsAPI, boardsAPI } from './utils/api';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './components/ui/dropdown-menu';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 
 function AppContent() {
-  const { user, anonId, isAuthenticated, logout } = useAuth();
+  const { user, anonId, isAuthenticated, logout, refreshProfile } = useAuth();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
@@ -24,32 +25,27 @@ function AppContent() {
   const [loading, setLoading] = useState(true);
   const [postCounts, setPostCounts] = useState<Record<string, number>>({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [modPanelOpen, setModPanelOpen] = useState(false);
+
+  const isMod = !!(user?.isAdmin || user?.isModerator || user?.username === 'Abhignyan1103');
 
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 50);
     };
-
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  useEffect(() => {
-    initializeApp();
-  }, []);
-
-  useEffect(() => {
-    loadPosts();
-  }, [activeBoard, sortBy]);
+  useEffect(() => { initializeApp(); }, []);
+  useEffect(() => { loadPosts(); }, [activeBoard, sortBy]);
 
   const initializeApp = async () => {
     try {
-      // Always fetch boards
       const boardsRes = await boardsAPI.getBoards();
       if (boardsRes.boards && boardsRes.boards.length > 0) {
         setBoards(boardsRes.boards);
       }
-
       await loadPosts();
     } catch (error) {
       console.error('Failed to initialize app:', error);
@@ -64,10 +60,8 @@ function AppContent() {
         board: activeBoard === 'all' ? undefined : activeBoard,
         sort: sortBy,
       });
-
       setPosts(response.posts);
 
-      // Calculate post counts per board
       const counts: Record<string, number> = {};
       const allPostsRes = await postsAPI.getPosts({});
       allPostsRes.posts.forEach((post: Post) => {
@@ -124,22 +118,43 @@ function AppContent() {
                 <span className="hidden sm:inline">{user?.anonId || anonId}</span>
               </div>
 
+              {/* Mod Panel Button — only visible to mods */}
+              {isMod && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 border-amber-500/50 text-amber-600 hover:bg-amber-500/10"
+                  onClick={() => setModPanelOpen(true)}
+                >
+                  <ShieldAlert className="w-4 h-4" />
+                  <span className="hidden sm:inline">Mod Panel</span>
+                </Button>
+              )}
+
               {isAuthenticated ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="sm" className="gap-2">
                       <User className="w-4 h-4" />
                       <span className="hidden sm:inline">{user?.username}</span>
+                      {isMod && <Shield className="w-3 h-3 text-amber-500" />}
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem disabled>
                       <User className="w-4 h-4 mr-2" />
                       {user?.username}
+                      {isMod && <span className="ml-2 text-xs text-amber-500">🛡️ Mod</span>}
                     </DropdownMenuItem>
                     <DropdownMenuItem disabled className="text-xs text-muted-foreground">
                       Posts: {user?.postCount} | Replies: {user?.replyCount}
                     </DropdownMenuItem>
+                    {isMod && (
+                      <DropdownMenuItem onClick={() => setModPanelOpen(true)}>
+                        <ShieldAlert className="w-4 h-4 mr-2 text-amber-500" />
+                        Moderator Panel
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem onClick={logout}>
                       <LogOut className="w-4 h-4 mr-2" />
                       Sign Out
@@ -153,7 +168,7 @@ function AppContent() {
                 </Button>
               )}
 
-              <CreatePostDialog boards={boards} onPostCreated={loadPosts} />
+              <CreatePostDialog boards={boards} onPostCreated={() => { loadPosts(); refreshProfile(); }} />
             </div>
           </div>
         </div>
@@ -199,27 +214,16 @@ function AppContent() {
               </div>
 
               <div className="flex gap-2 mb-6">
-                <Button
-                  variant={sortBy === 'new' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSortBy('new')}
-                >
-                  New
-                </Button>
-                <Button
-                  variant={sortBy === 'hot' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSortBy('hot')}
-                >
-                  Hot
-                </Button>
-                <Button
-                  variant={sortBy === 'top' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSortBy('top')}
-                >
-                  Top
-                </Button>
+                {['new', 'hot', 'top'].map(s => (
+                  <Button
+                    key={s}
+                    variant={sortBy === s ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setSortBy(s)}
+                  >
+                    {s.charAt(0).toUpperCase() + s.slice(1)}
+                  </Button>
+                ))}
               </div>
 
               {posts.length === 0 ? (
@@ -231,6 +235,9 @@ function AppContent() {
                   {posts.map((post) => (
                     <div key={post.id} onClick={() => setSelectedPostId(post.id)} className="cursor-pointer">
                       <BoardCard
+                        postId={post.id}
+                        postUsername={post.username}
+                        postAnonId={post.anonId}
                         title={post.title}
                         content={post.content}
                         category={boards.find(b => b.id === post.board)?.name || post.board}
@@ -238,6 +245,10 @@ function AppContent() {
                         comments={post.replyCount}
                         timestamp={timeAgo(post.createdAt)}
                         trending={sortBy === 'hot' && post.likes > 100}
+                        isReported={!!(post as any).isReported}
+                        reportCount={(post as any).reportCount || 0}
+                        likedBy={(post as any).likedBy || []}
+                        onPostDeleted={loadPosts}
                       />
                     </div>
                   ))}
@@ -253,6 +264,14 @@ function AppContent() {
         postId={selectedPostId}
         isOpen={!!selectedPostId}
         onClose={() => setSelectedPostId(null)}
+        onReplyCreated={refreshProfile}
+      />
+
+      {/* Moderator Panel */}
+      <ModeratorPanel
+        isOpen={modPanelOpen}
+        onClose={() => setModPanelOpen(false)}
+        onPostRemoved={loadPosts}
       />
 
       {/* Auth Modals */}
